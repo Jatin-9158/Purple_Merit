@@ -29,6 +29,55 @@ app.use('/api/', apiLimiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// CORS configuration - MUST be before other middleware
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  'http://localhost:3000',
+  'http://localhost:3001'
+].filter(Boolean); // Remove undefined values
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests) in development
+    if (!origin && process.env.NODE_ENV === 'development') {
+      return callback(null, true);
+    }
+    
+    // In development, allow localhost
+    if (process.env.NODE_ENV === 'development' && origin && origin.includes('localhost')) {
+      return callback(null, true);
+    }
+    
+    // Check if origin is in allowed list
+    if (allowedOrigins.some(allowedOrigin => origin === allowedOrigin)) {
+      callback(null, true);
+    } else if (process.env.FRONTEND_URL && origin) {
+      // Allow if origin matches FRONTEND_URL (for production)
+      const frontendUrl = process.env.FRONTEND_URL.replace(/\/$/, '');
+      if (origin.startsWith(frontendUrl)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    } else {
+      // In development, be more permissive
+      if (process.env.NODE_ENV === 'development') {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  maxAge: 86400 // 24 hours
+}));
+
+// Handle preflight requests
+app.options('*', cors());
+
 // Data sanitization against NoSQL injection
 app.use(mongoSanitize());
 
@@ -40,14 +89,6 @@ app.use(hpp());
 
 // Custom input sanitization
 app.use(sanitizeInput);
-
-// CORS configuration
-app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
 
 // Database connection
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://jatinbhatia319:jatinbhatia319@namastenode.9ooaz.mongodb.net/user-management?appName=NamasteNode';
