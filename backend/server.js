@@ -30,52 +30,17 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // CORS configuration - MUST be before other middleware
-const allowedOrigins = [
-  process.env.FRONTEND_URL,
-  'http://localhost:3000',
-  'http://localhost:3001'
-].filter(Boolean); // Remove undefined values
-
+// Permissive CORS to allow all origins (restrict in production if needed)
 app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests) in development
-    if (!origin && process.env.NODE_ENV === 'development') {
-      return callback(null, true);
-    }
-    
-    // In development, allow localhost
-    if (process.env.NODE_ENV === 'development' && origin && origin.includes('localhost')) {
-      return callback(null, true);
-    }
-    
-    // Check if origin is in allowed list
-    if (allowedOrigins.some(allowedOrigin => origin === allowedOrigin)) {
-      callback(null, true);
-    } else if (process.env.FRONTEND_URL && origin) {
-      // Allow if origin matches FRONTEND_URL (for production)
-      const frontendUrl = process.env.FRONTEND_URL.replace(/\/$/, '');
-      if (origin.startsWith(frontendUrl)) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    } else {
-      // In development, be more permissive
-      if (process.env.NODE_ENV === 'development') {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    }
-  },
+  origin: true, // Allow all origins - change this to specific URLs for production security
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
   exposedHeaders: ['Content-Range', 'X-Content-Range'],
   maxAge: 86400 // 24 hours
 }));
 
-// Handle preflight requests
+// Handle preflight requests explicitly
 app.options('*', cors());
 
 // Data sanitization against NoSQL injection
@@ -100,14 +65,28 @@ mongoose.connect(MONGODB_URI, {
 .then(() => console.log('MongoDB connected successfully'))
 .catch((err) => console.error('MongoDB connection error:', err));
 
-// Routes
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/users', require('./routes/users'));
-
-// Health check endpoint
+// Health check endpoint (before other routes)
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'OK', message: 'Server is running' });
 });
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.status(200).json({ 
+    success: true, 
+    message: 'User Management System API',
+    version: '1.0.0',
+    endpoints: {
+      health: '/api/health',
+      auth: '/api/auth',
+      users: '/api/users'
+    }
+  });
+});
+
+// API Routes
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/users', require('./routes/users'));
 
 // Error logging middleware
 app.use(errorLogger);
@@ -147,11 +126,26 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 404 handler
+// 404 handler - must be last
 app.use((req, res) => {
   res.status(404).json({
     success: false,
-    message: 'Route not found'
+    message: 'Route not found',
+    path: req.path,
+    method: req.method,
+    availableEndpoints: {
+      health: 'GET /api/health',
+      signup: 'POST /api/auth/signup',
+      login: 'POST /api/auth/login',
+      getCurrentUser: 'GET /api/auth/me',
+      logout: 'POST /api/auth/logout',
+      getAllUsers: 'GET /api/users (Admin only)',
+      getProfile: 'GET /api/users/profile',
+      updateProfile: 'PUT /api/users/profile',
+      changePassword: 'PUT /api/users/change-password',
+      activateUser: 'PUT /api/users/:userId/activate (Admin only)',
+      deactivateUser: 'PUT /api/users/:userId/deactivate (Admin only)'
+    }
   });
 });
 
